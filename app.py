@@ -10,9 +10,7 @@ st.set_page_config(
 )
 
 st.title("Análisis de Pulling por batería y pozo")
-st.write(
-    "Carga el Excel de intervenciones, selecciona los filtros y presiona Ejecutar análisis."
-)
+st.write("Carga el Excel, selecciona el rango de fechas, la batería, el tipo de Pulling y presiona Ejecutar análisis.")
 
 archivo = st.file_uploader(
     "Carga tu archivo Excel",
@@ -298,7 +296,6 @@ st.success(
 
 servicios_disponibles = sorted(df_pulling_base["Servicio"].dropna().unique())
 baterias_disponibles = ["Todas"] + sorted(df_pulling_base["Bateria"].dropna().unique())
-anios_disponibles = sorted(df_pulling_base["Año"].dropna().unique())
 
 st.sidebar.header("Filtros")
 
@@ -320,12 +317,6 @@ with st.sidebar.form("formulario_filtros_pulling"):
     bateria_sel = st.selectbox(
         "Selecciona batería",
         baterias_disponibles
-    )
-
-    anios_sel = st.multiselect(
-        "Selecciona años",
-        anios_disponibles,
-        default=anios_disponibles
     )
 
     top_n = st.slider(
@@ -352,7 +343,6 @@ if ejecutar:
         "rango_fechas": rango_fechas,
         "servicios_sel": servicios_sel,
         "bateria_sel": bateria_sel,
-        "anios_sel": anios_sel,
         "top_n": top_n,
         "solo_repetidos_mismo_anio": solo_repetidos_mismo_anio
     }
@@ -368,7 +358,6 @@ filtros = st.session_state["filtros_guardados"]
 rango_fechas = filtros["rango_fechas"]
 servicios_sel = filtros["servicios_sel"]
 bateria_sel = filtros["bateria_sel"]
-anios_sel = filtros["anios_sel"]
 top_n = filtros["top_n"]
 solo_repetidos_mismo_anio = filtros["solo_repetidos_mismo_anio"]
 
@@ -380,10 +369,6 @@ else:
 
 if not servicios_sel:
     st.warning("Selecciona por lo menos un tipo de Pulling y presiona Ejecutar análisis.")
-    st.stop()
-
-if not anios_sel:
-    st.warning("Selecciona por lo menos un año y presiona Ejecutar análisis.")
     st.stop()
 
 df_pulling = df_pulling_base.copy()
@@ -401,10 +386,6 @@ if bateria_sel != "Todas":
     df_pulling = df_pulling[
         df_pulling["Bateria"] == bateria_sel
     ].copy()
-
-df_pulling = df_pulling[
-    df_pulling["Año"].isin(anios_sel)
-].copy()
 
 if df_pulling.empty:
     st.warning("No hay registros de Pulling con los filtros seleccionados.")
@@ -487,7 +468,7 @@ st.subheader("Ranking de pozos que más caen a Pulling")
 
 st.dataframe(
     resumen_pozo,
-    width="stretch"
+    use_container_width=True
 )
 
 fig_ranking = px.bar(
@@ -500,7 +481,7 @@ fig_ranking = px.bar(
 
 st.plotly_chart(
     fig_ranking,
-    width="stretch"
+    use_container_width=True
 )
 
 st.divider()
@@ -531,11 +512,11 @@ resumen_reincidentes = resumen_pozo_anio[
     resumen_pozo_anio["Veces_Pulling"] > 1
 ].copy()
 
-st.write("Esta tabla muestra los pozos que se repiten dentro del mismo año.")
+st.write("Esta tabla muestra los pozos que se repiten dentro del mismo año, según el rango de fechas seleccionado.")
 
 st.dataframe(
     resumen_reincidentes,
-    width="stretch"
+    use_container_width=True
 )
 
 if not resumen_reincidentes.empty:
@@ -563,7 +544,7 @@ resumen_anual = (
 
 st.dataframe(
     resumen_anual,
-    width="stretch"
+    use_container_width=True
 )
 
 fig_anual = px.bar(
@@ -576,7 +557,7 @@ fig_anual = px.bar(
 
 st.plotly_chart(
     fig_anual,
-    width="stretch"
+    use_container_width=True
 )
 
 st.divider()
@@ -603,7 +584,7 @@ fig_pozo_anio = px.bar(
 
 st.plotly_chart(
     fig_pozo_anio,
-    width="stretch"
+    use_container_width=True
 )
 
 st.divider()
@@ -636,7 +617,7 @@ detalle_top = (
 
 st.dataframe(
     detalle_top,
-    width="stretch"
+    use_container_width=True
 )
 
 st.divider()
@@ -663,7 +644,7 @@ st.metric(
 
 st.dataframe(
     detalle_pozo,
-    width="stretch"
+    use_container_width=True
 )
 
 st.subheader("Fichas del pozo seleccionado")
@@ -714,7 +695,7 @@ resumen_motivos = (
 
 st.dataframe(
     resumen_motivos,
-    width="stretch"
+    use_container_width=True
 )
 
 st.divider()
