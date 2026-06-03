@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from datetime import date
 
 st.set_page_config(
     page_title="Análisis de Pulling por Pozo",
@@ -8,18 +9,21 @@ st.set_page_config(
 )
 
 st.title("Análisis de pozos con caída a Pulling")
-st.write("Carga tu Excel, selecciona la batería y revisa qué pozos caen más veces a pulling por año, fecha, causa, motivo, falla y ubicación.")
+st.write("Carga tu Excel, selecciona la batería y analiza los pozos que más veces caen a Pulling desde la primera fecha detectada en la data.")
 
 archivo = st.file_uploader("Carga tu archivo Excel", type=["xlsx"])
+
 
 def limpiar_columnas(df):
     df.columns = df.columns.astype(str).str.strip()
     return df
 
+
 def limpiar_texto(valor):
     if pd.isna(valor):
         return ""
     return str(valor).strip()
+
 
 def buscar_columna(df, posibles_nombres):
     columnas = list(df.columns)
@@ -29,18 +33,50 @@ def buscar_columna(df, posibles_nombres):
                 return col
     return None
 
-def convertir_fecha(serie):
-    fecha = pd.to_datetime(serie, errors="coerce", dayfirst=True)
 
-    if fecha.isna().sum() > len(serie) * 0.5:
-        fecha = pd.to_datetime(
-            serie,
-            errors="coerce",
-            unit="D",
-            origin="1899-12-30"
-        )
+def convertir_fecha_segura(serie):
+    """
+    Convierte fechas aunque vengan como:
+    31/05/2026
+    2026-05-31
+    20260531
+    número serial de Excel
+    """
 
-    return fecha
+    serie_original = serie.copy()
+
+    fecha_1 = pd.to_datetime(
+        serie_original,
+        errors="coerce",
+        dayfirst=True
+    )
+
+    numerica = pd.to_numeric(serie_original, errors="coerce")
+
+    fecha_excel = pd.to_datetime(
+        numerica,
+        errors="coerce",
+        unit="D",
+        origin="1899-12-30"
+    )
+
+    fecha_yyyymmdd = pd.to_datetime(
+        serie_original.astype(str).str.replace(".0", "", regex=False),
+        format="%Y%m%d",
+        errors="coerce"
+    )
+
+    fecha_final = fecha_1.copy()
+
+    fecha_final = fecha_final.fillna(fecha_excel)
+    fecha_final = fecha_final.fillna(fecha_yyyymmdd)
+
+    fecha_final = fecha_final.where(
+        (fecha_final.dt.year >= 2000) & (fecha_final.dt.year <= 2100)
+    )
+
+    return fecha_final
+
 
 if archivo is not None:
 
@@ -49,13 +85,13 @@ if archivo is not None:
 
     col_bateria = buscar_columna(df, ["Bateria", "Batería", "Battery"])
     col_pozo = buscar_columna(df, ["Pozo", "Well"])
-    col_fecha = buscar_columna(df, ["FechaDif", "Fecha", "Fecha Dif", "Fecha de intervención"])
+    col_fecha = buscar_columna(df, ["FechaDif", "Fecha", "Fecha Dif", "Fecha de intervención", "FechaIntervencion"])
     col_servicio = buscar_columna(df, ["TServicio", "Servicio", "Tipo Servicio", "Tipo de Servicio"])
     col_causa = buscar_columna(df, ["Causa"])
     col_motivo = buscar_columna(df, ["Motivo"])
     col_falla = buscar_columna(df, ["Falla"])
     col_ubicacion = buscar_columna(df, ["Ubicación", "Ubicacion"])
-    col_cfalla = buscar_columna(df, ["CFalla", "C Falla", "Causa Final", "CausaFalla"])
+    col_cfalla = buscar_columna(df, ["CFalla", "C Falla", "Causa Final", "CausaFalla", "CFalla "])
 
     columnas_minimas = {
         "Batería": col_bateria,
@@ -81,13 +117,22 @@ if archivo is not None:
         if col is not None:
             df[col] = df[col].apply(limpiar_texto)
 
-    df[col_fecha] = convertir_fecha(df[col_fecha])
+    df[col_fecha] = convertir_fecha_segura(df[col_fecha])
     df = df.dropna(subset=[col_fecha])
+
+    if df.empty:
+        st.error("No se detectaron fechas válidas en el Excel.")
+        st.stop()
 
     df["Año"] = df[col_fecha].dt.year
     df["Mes"] = df[col_fecha].dt.month
     df["Periodo"] = df[col_fecha].dt.strftime("%Y-%m")
     df["Fecha_Texto"] = df[col_fecha].dt.strftime("%d/%m/%Y")
+
+    fecha_minima = df[col_fecha].min().date()
+    fecha_maxima = df[col_fecha].max().date()
+
+    st.success(f"Rango detectado en la data: {fecha_minima.strftime('%d/%m/%Y')} al {fecha_maxima.strftime('%d/%m/%Y')}")
 
     df_pulling = df[
         df[col_servicio].str.contains("pulling", case=False, na=False)
@@ -98,6 +143,28 @@ if archivo is not None:
         st.stop()
 
     st.sidebar.header("Filtros")
+
+    rango_fechas = st.sidebar.date_input(
+        "Rango de fechas para analizar",
+        value=(fecha_minima, fecha_maxima),
+        min_value=fecha_minima,
+        max_value=fecha_maxima
+    )
+
+    if isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
+        fecha_inicio, fecha_fin = rango_fechas
+    else:
+        fecha_inicio = fecha_minima
+        fecha_fin = fecha_maxima
+
+    df_pulling = df_pulling[
+        (df_pulling[col_fecha].dt.date >= fecha_inicio) &
+        (df_pulling[col_fecha].dt.date <= fecha_fin)
+    ].copy()
+
+    if df_pulling.empty:
+        st.warning("No hay registros de Pulling dentro del rango de fechas seleccionado.")
+        st.stop()
 
     baterias = sorted(df_pulling[col_bateria].dropna().unique())
 
@@ -119,10 +186,19 @@ if archivo is not None:
     df_bat = df_bat[df_bat["Año"].isin(años_sel)].copy()
 
     if df_bat.empty:
-        st.warning("No hay registros para la batería y años seleccionados.")
+        st.warning("No hay registros para la batería, años y fechas seleccionadas.")
         st.stop()
 
     st.subheader(f"Batería seleccionada: {bateria_sel}")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Fecha inicial analizada", fecha_inicio.strftime("%d/%m/%Y"))
+    col2.metric("Fecha final analizada", fecha_fin.strftime("%d/%m/%Y"))
+    col3.metric("Total eventos Pulling", len(df_bat))
+    col4.metric("Pozos con Pulling", df_bat[col_pozo].nunique())
+
+    st.divider()
 
     resumen_pozo = (
         df_bat
@@ -141,11 +217,12 @@ if archivo is not None:
     pozo_top = resumen_pozo.iloc[0][col_pozo]
     veces_top = int(resumen_pozo.iloc[0]["Veces_Pulling"])
 
-    col1, col2, col3 = st.columns(3)
+    st.subheader("Pozo con más caídas a Pulling")
 
-    col1.metric("Pozo que más cayó a Pulling", pozo_top)
-    col2.metric("Cantidad de veces", veces_top)
-    col3.metric("Pozos con Pulling", resumen_pozo[col_pozo].nunique())
+    col5, col6 = st.columns(2)
+
+    col5.metric("Pozo", pozo_top)
+    col6.metric("Cantidad de veces", veces_top)
 
     st.divider()
 
@@ -196,7 +273,7 @@ if archivo is not None:
 
     st.divider()
 
-    st.subheader(f"Detalle del pozo que más cayó: {pozo_top}")
+    st.subheader(f"Detalle del pozo que más cayó a Pulling: {pozo_top}")
 
     columnas_detalle = [
         "Fecha_Texto",
