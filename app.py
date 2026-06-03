@@ -739,6 +739,59 @@ st.dataframe(
     use_container_width=True
 )
 
+st.subheader(f"Motivo de falla del pozo {pozo_sel}")
+
+detalle_cfalla = detalle_pozo.copy()
+
+detalle_cfalla["CFalla"] = detalle_cfalla["CFalla"].fillna("").astype(str).str.strip()
+
+detalle_cfalla = detalle_cfalla[
+    detalle_cfalla["CFalla"] != ""
+].copy()
+
+if detalle_cfalla.empty:
+    st.warning(f"El pozo {pozo_sel} no tiene datos registrados en la columna CFalla.")
+else:
+    resumen_cfalla = (
+        detalle_cfalla
+        .groupby("CFalla", as_index=False)
+        .agg(Veces=("Pozo", "count"))
+        .sort_values("Veces", ascending=False)
+    )
+
+    st.dataframe(
+        resumen_cfalla,
+        use_container_width=True
+    )
+
+    orden_cfalla = resumen_cfalla["CFalla"].tolist()
+
+    fig_cfalla = px.bar(
+        resumen_cfalla,
+        x="CFalla",
+        y="Veces",
+        text="Veces",
+        title=f"Motivo de falla según CFalla para el pozo {pozo_sel}",
+        category_orders={
+            "CFalla": orden_cfalla
+        }
+    )
+
+    fig_cfalla.update_layout(
+        xaxis_title="Motivo de falla",
+        yaxis_title="Cantidad de eventos"
+    )
+
+    fig_cfalla.update_xaxes(
+        categoryorder="array",
+        categoryarray=orden_cfalla
+    )
+
+    st.plotly_chart(
+        fig_cfalla,
+        use_container_width=True
+    )
+
 st.subheader("Fichas del pozo seleccionado")
 
 max_fichas = min(len(detalle_pozo), 100)
