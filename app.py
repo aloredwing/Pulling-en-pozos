@@ -4,6 +4,12 @@ import plotly.express as px
 import re
 import io
 
+from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.util import Inches, Pt
+
+
 st.set_page_config(
     page_title="Análisis de Pulling por Batería y Pozo",
     layout="wide"
@@ -146,6 +152,109 @@ def valor_mas_frecuente(serie):
         return ""
 
     return valores.value_counts().index[0]
+
+
+def crear_ppt_editable_pozo(pozo, detalle_pozo, resumen_cfalla):
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    titulo = slide.shapes.add_textbox(
+        Inches(0.6),
+        Inches(0.25),
+        Inches(12.2),
+        Inches(0.6)
+    )
+
+    tf = titulo.text_frame
+    tf.text = f"Pozos Definidos a Pulling - {pozo}"
+    tf.paragraphs[0].font.size = Pt(28)
+    tf.paragraphs[0].font.bold = True
+
+    texto_info = slide.shapes.add_textbox(
+        Inches(0.6),
+        Inches(0.85),
+        Inches(12),
+        Inches(0.3)
+    )
+
+    texto_info.text_frame.text = "Gráficos editables en PowerPoint"
+    texto_info.text_frame.paragraphs[0].font.size = Pt(11)
+
+    resumen_anio_pozo = (
+        detalle_pozo
+        .groupby("Año", as_index=False)
+        .agg(Veces_Pulling=("Pozo", "count"))
+        .sort_values("Año")
+    )
+
+    chart_data_anio = CategoryChartData()
+    chart_data_anio.categories = resumen_anio_pozo["Año"].astype(str).tolist()
+    chart_data_anio.add_series(
+        "Veces Pulling",
+        [int(x) for x in resumen_anio_pozo["Veces_Pulling"].tolist()]
+    )
+
+    chart_1 = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Inches(0.7),
+        Inches(1.35),
+        Inches(11.8),
+        Inches(2.35),
+        chart_data_anio
+    ).chart
+
+    chart_1.has_title = True
+    chart_1.chart_title.text_frame.text = f"Pulling por año - {pozo}"
+    chart_1.has_legend = False
+    chart_1.category_axis.tick_labels.font.size = Pt(9)
+    chart_1.value_axis.tick_labels.font.size = Pt(9)
+    chart_1.plots[0].has_data_labels = True
+    chart_1.plots[0].data_labels.show_value = True
+    chart_1.plots[0].data_labels.font.size = Pt(9)
+
+    if resumen_cfalla is not None and not resumen_cfalla.empty:
+        chart_data_cfalla = CategoryChartData()
+        chart_data_cfalla.categories = resumen_cfalla["CFalla"].astype(str).tolist()
+        chart_data_cfalla.add_series(
+            "Cantidad de eventos",
+            [int(x) for x in resumen_cfalla["Veces"].tolist()]
+        )
+
+        chart_2 = slide.shapes.add_chart(
+            XL_CHART_TYPE.COLUMN_CLUSTERED,
+            Inches(0.7),
+            Inches(4.25),
+            Inches(11.8),
+            Inches(2.35),
+            chart_data_cfalla
+        ).chart
+
+        chart_2.has_title = True
+        chart_2.chart_title.text_frame.text = f"Motivo de falla - {pozo}"
+        chart_2.has_legend = False
+        chart_2.category_axis.tick_labels.font.size = Pt(8)
+        chart_2.value_axis.tick_labels.font.size = Pt(9)
+        chart_2.plots[0].has_data_labels = True
+        chart_2.plots[0].data_labels.show_value = True
+        chart_2.plots[0].data_labels.font.size = Pt(9)
+    else:
+        aviso = slide.shapes.add_textbox(
+            Inches(0.7),
+            Inches(4.4),
+            Inches(11.8),
+            Inches(0.6)
+        )
+        aviso.text_frame.text = "No hay datos en CFalla para este pozo."
+        aviso.text_frame.paragraphs[0].font.size = Pt(16)
+
+    salida = io.BytesIO()
+    prs.save(salida)
+    salida.seek(0)
+
+    return salida.getvalue()
 
 
 @st.cache_data(show_spinner=False)
@@ -743,11 +852,18 @@ st.subheader(f"Motivo de falla del pozo {pozo_sel}")
 
 detalle_cfalla = detalle_pozo.copy()
 
-detalle_cfalla["CFalla"] = detalle_cfalla["CFalla"].fillna("").astype(str).str.strip()
+detalle_cfalla["CFalla"] = (
+    detalle_cfalla["CFalla"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
+)
 
 detalle_cfalla = detalle_cfalla[
     detalle_cfalla["CFalla"] != ""
 ].copy()
+
+resumen_cfalla = pd.DataFrame(columns=["CFalla", "Veces"])
 
 if detalle_cfalla.empty:
     st.warning(f"El pozo {pozo_sel} no tiene datos registrados en la columna CFalla.")
@@ -791,6 +907,23 @@ else:
         fig_cfalla,
         use_container_width=True
     )
+
+st.subheader("PowerPoint editable del pozo seleccionado")
+
+ppt_editable = crear_ppt_editable_pozo(
+    pozo_sel,
+    detalle_pozo,
+    resumen_cfalla
+)
+
+nombre_pozo_limpio = str(pozo_sel).replace("/", "_").replace("\\", "_")
+
+st.download_button(
+    label="Descargar gráficos editables en PowerPoint",
+    data=ppt_editable,
+    file_name=f"graficos_editables_{nombre_pozo_limpio}.pptx",
+    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+)
 
 st.subheader("Fichas del pozo seleccionado")
 
