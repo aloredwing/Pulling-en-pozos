@@ -10,7 +10,10 @@ st.set_page_config(
 )
 
 st.title("Análisis de Pulling por batería y pozo")
-st.write("Carga el Excel, selecciona el rango de fechas, la batería, el tipo de Pulling y presiona Ejecutar análisis.")
+st.write(
+    "Carga el Excel, selecciona el rango de fechas, la batería, el tipo de Pulling "
+    "y presiona Ejecutar análisis."
+)
 
 archivo = st.file_uploader(
     "Carga tu archivo Excel",
@@ -320,7 +323,7 @@ with st.sidebar.form("formulario_filtros_pulling"):
     )
 
     top_n = st.slider(
-        "Cantidad de pozos para gráficos",
+        "Cantidad inicial de pozos para gráficos",
         min_value=5,
         max_value=50,
         value=10
@@ -564,28 +567,117 @@ st.divider()
 
 st.subheader("Pulling por pozo y año")
 
-top_pozos = resumen_pozo.head(top_n)["Pozo"].tolist()
-
-grafico_pozo_anio = resumen_pozo_anio[
-    resumen_pozo_anio["Pozo"].isin(top_pozos)
-].copy()
-
-grafico_pozo_anio["Año"] = grafico_pozo_anio["Año"].astype(str)
-
-fig_pozo_anio = px.bar(
-    grafico_pozo_anio,
-    x="Pozo",
-    y="Veces_Pulling",
-    color="Año",
-    text="Veces_Pulling",
-    barmode="group",
-    title=f"Pulling por pozo y año para el top {top_n}"
+resumen_pozo_ordenado = (
+    resumen_pozo
+    .sort_values(["Veces_Pulling", "Pozo"], ascending=[False, True])
+    .reset_index(drop=True)
+    .copy()
 )
 
-st.plotly_chart(
-    fig_pozo_anio,
-    use_container_width=True
-)
+resumen_pozo_ordenado["Ranking"] = resumen_pozo_ordenado.index + 1
+
+total_pozos = len(resumen_pozo_ordenado)
+
+col_control_grafico, col_grafico = st.columns([1.2, 4])
+
+with col_control_grafico:
+    st.markdown("#### Filtro del gráfico")
+
+    if total_pozos == 1:
+        rango_ranking = (1, 1)
+        st.info("Solo hay un pozo disponible.")
+    else:
+        rango_ranking = st.slider(
+            "Rango de ranking",
+            min_value=1,
+            max_value=total_pozos,
+            value=(1, min(top_n, total_pozos))
+        )
+
+    ranking_inicio, ranking_fin = rango_ranking
+
+    pozos_por_rango = (
+        resumen_pozo_ordenado[
+            (resumen_pozo_ordenado["Ranking"] >= ranking_inicio) &
+            (resumen_pozo_ordenado["Ranking"] <= ranking_fin)
+        ]["Pozo"]
+        .tolist()
+    )
+
+    pozos_todos_ordenados = resumen_pozo_ordenado["Pozo"].tolist()
+
+    clave_multiselect = (
+        f"pozos_grafico_{bateria_sel}_{fecha_inicio}_{fecha_fin}_"
+        f"{ranking_inicio}_{ranking_fin}_{len(df_pulling)}"
+    )
+
+    pozos_sel_grafico = st.multiselect(
+        "Selecciona uno o varios pozos",
+        options=pozos_todos_ordenados,
+        default=pozos_por_rango,
+        key=clave_multiselect
+    )
+
+    st.write("Pozos seleccionados:", len(pozos_sel_grafico))
+
+    tabla_ranking_grafico = resumen_pozo_ordenado[
+        resumen_pozo_ordenado["Pozo"].isin(pozos_sel_grafico)
+    ][["Ranking", "Pozo", "Veces_Pulling"]]
+
+    st.dataframe(
+        tabla_ranking_grafico,
+        use_container_width=True,
+        hide_index=True
+    )
+
+with col_grafico:
+    if not pozos_sel_grafico:
+        st.warning("Selecciona por lo menos un pozo para mostrar el gráfico.")
+    else:
+        pozos_ordenados_grafico = [
+            pozo for pozo in pozos_todos_ordenados
+            if pozo in pozos_sel_grafico
+        ]
+
+        grafico_pozo_anio = resumen_pozo_anio[
+            resumen_pozo_anio["Pozo"].isin(pozos_ordenados_grafico)
+        ].copy()
+
+        grafico_pozo_anio["Año"] = grafico_pozo_anio["Año"].astype(str)
+
+        anios_ordenados = sorted(
+            grafico_pozo_anio["Año"].dropna().unique()
+        )
+
+        fig_pozo_anio = px.bar(
+            grafico_pozo_anio,
+            x="Pozo",
+            y="Veces_Pulling",
+            color="Año",
+            text="Veces_Pulling",
+            barmode="group",
+            title="Pulling por pozo y año ordenado de mayor a menor",
+            category_orders={
+                "Pozo": pozos_ordenados_grafico,
+                "Año": anios_ordenados
+            }
+        )
+
+        fig_pozo_anio.update_layout(
+            xaxis_title="Pozo",
+            yaxis_title="Veces Pulling",
+            legend_title="Año"
+        )
+
+        fig_pozo_anio.update_xaxes(
+            categoryorder="array",
+            categoryarray=pozos_ordenados_grafico
+        )
+
+        st.plotly_chart(
+            fig_pozo_anio,
+            use_container_width=True
+        )
 
 st.divider()
 
