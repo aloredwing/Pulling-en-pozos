@@ -8,6 +8,8 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 
 
 st.set_page_config(
@@ -25,6 +27,27 @@ archivo = st.file_uploader(
     "Carga tu archivo Excel",
     type=["xls", "xlsx"]
 )
+
+
+PPT_AZUL_OSCURO = RGBColor(15, 45, 90)
+PPT_AZUL = RGBColor(37, 99, 235)
+PPT_GRIS = RGBColor(100, 116, 139)
+PPT_TEXTO = RGBColor(15, 23, 42)
+PPT_NARANJA = RGBColor(249, 115, 22)
+PPT_VERDE = RGBColor(22, 163, 74)
+PPT_ROJO = RGBColor(220, 38, 38)
+PPT_MORADO = RGBColor(126, 34, 206)
+
+PALETA_PPT = [
+    RGBColor(37, 99, 235),
+    RGBColor(220, 38, 38),
+    RGBColor(22, 163, 74),
+    RGBColor(249, 115, 22),
+    RGBColor(126, 34, 206),
+    RGBColor(14, 165, 233),
+    RGBColor(100, 116, 139),
+    RGBColor(234, 179, 8),
+]
 
 
 def normalizar_texto(valor):
@@ -168,46 +191,144 @@ def limpiar_texto_ppt(valor):
     return texto.strip()
 
 
-def agregar_titulo_slide(slide, titulo):
+def aplicar_fondo_slide(slide):
+    fondo = slide.background.fill
+    fondo.solid()
+    fondo.fore_color.rgb = RGBColor(248, 250, 252)
+
+
+def agregar_banda_titulo(slide, titulo, subtitulo=""):
+    aplicar_fondo_slide(slide)
+
+    banda = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(0),
+        Inches(0),
+        Inches(13.333),
+        Inches(0.85)
+    )
+    banda.fill.solid()
+    banda.fill.fore_color.rgb = PPT_AZUL_OSCURO
+    banda.line.color.rgb = PPT_AZUL_OSCURO
+
     caja_titulo = slide.shapes.add_textbox(
         Inches(0.45),
-        Inches(0.18),
-        Inches(12.4),
-        Inches(0.45)
-    )
-
-    tf = caja_titulo.text_frame
-    tf.text = titulo
-    tf.paragraphs[0].font.size = Pt(22)
-    tf.paragraphs[0].font.bold = True
-
-
-def agregar_subtitulo_slide(slide, subtitulo):
-    caja_subtitulo = slide.shapes.add_textbox(
-        Inches(0.45),
-        Inches(0.62),
+        Inches(0.15),
         Inches(12.4),
         Inches(0.35)
     )
+    tf = caja_titulo.text_frame
+    tf.text = titulo
+    tf.paragraphs[0].font.size = Pt(21)
+    tf.paragraphs[0].font.bold = True
+    tf.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
 
-    tf = caja_subtitulo.text_frame
-    tf.text = subtitulo
-    tf.paragraphs[0].font.size = Pt(11)
-
-
-def agregar_grafico_columnas(slide, titulo, df, col_categoria, col_valor, x, y, w, h):
-    if df.empty:
-        aviso = slide.shapes.add_textbox(
-            x,
-            y,
-            w,
-            Inches(0.6)
+    if subtitulo:
+        caja_subtitulo = slide.shapes.add_textbox(
+            Inches(0.45),
+            Inches(0.52),
+            Inches(12.4),
+            Inches(0.25)
         )
+        tf2 = caja_subtitulo.text_frame
+        tf2.text = subtitulo
+        tf2.paragraphs[0].font.size = Pt(10)
+        tf2.paragraphs[0].font.color.rgb = RGBColor(219, 234, 254)
+
+
+def agregar_footer(slide, texto="Reporte generado automáticamente desde Streamlit"):
+    caja = slide.shapes.add_textbox(
+        Inches(0.5),
+        Inches(7.12),
+        Inches(12.3),
+        Inches(0.25)
+    )
+    tf = caja.text_frame
+    tf.text = texto
+    tf.paragraphs[0].font.size = Pt(8)
+    tf.paragraphs[0].font.color.rgb = PPT_GRIS
+
+
+def agregar_tarjeta_kpi(slide, titulo, valor, x, y, w=2.8, h=0.85, color=PPT_AZUL):
+    tarjeta = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h)
+    )
+    tarjeta.fill.solid()
+    tarjeta.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    tarjeta.line.color.rgb = RGBColor(203, 213, 225)
+
+    caja_valor = slide.shapes.add_textbox(
+        Inches(x + 0.15),
+        Inches(y + 0.12),
+        Inches(w - 0.3),
+        Inches(0.32)
+    )
+    tfv = caja_valor.text_frame
+    tfv.text = str(valor)
+    tfv.paragraphs[0].font.size = Pt(19)
+    tfv.paragraphs[0].font.bold = True
+    tfv.paragraphs[0].font.color.rgb = color
+
+    caja_titulo = slide.shapes.add_textbox(
+        Inches(x + 0.15),
+        Inches(y + 0.48),
+        Inches(w - 0.3),
+        Inches(0.25)
+    )
+    tft = caja_titulo.text_frame
+    tft.text = titulo
+    tft.paragraphs[0].font.size = Pt(9)
+    tft.paragraphs[0].font.color.rgb = PPT_GRIS
+
+
+def aplicar_estilo_chart(chart, mostrar_valores=False):
+    try:
+        chart.chart_title.text_frame.paragraphs[0].font.size = Pt(14)
+        chart.chart_title.text_frame.paragraphs[0].font.bold = True
+        chart.chart_title.text_frame.paragraphs[0].font.color.rgb = PPT_TEXTO
+    except Exception:
+        pass
+
+    try:
+        chart.category_axis.tick_labels.font.size = Pt(8)
+        chart.value_axis.tick_labels.font.size = Pt(9)
+        chart.value_axis.has_major_gridlines = True
+    except Exception:
+        pass
+
+    try:
+        chart.plots[0].has_data_labels = mostrar_valores
+        if mostrar_valores:
+            chart.plots[0].data_labels.show_value = True
+            chart.plots[0].data_labels.font.size = Pt(8)
+    except Exception:
+        pass
+
+    try:
+        for i, serie in enumerate(chart.series):
+            serie.format.fill.solid()
+            serie.format.fill.fore_color.rgb = PALETA_PPT[i % len(PALETA_PPT)]
+            serie.format.line.color.rgb = RGBColor(255, 255, 255)
+    except Exception:
+        pass
+
+
+def agregar_grafico_columnas(slide, titulo, df, col_categoria, col_valor, x, y, w, h, ordenar=True):
+    if df.empty:
+        aviso = slide.shapes.add_textbox(x, y, w, Inches(0.6))
         aviso.text_frame.text = f"No hay datos para {titulo}."
         aviso.text_frame.paragraphs[0].font.size = Pt(14)
         return
 
     df = df.copy()
+
+    if ordenar:
+        df = df.sort_values(col_valor, ascending=False)
+
     df[col_categoria] = df[col_categoria].astype(str).apply(limpiar_texto_ppt)
 
     chart_data = CategoryChartData()
@@ -230,22 +351,12 @@ def agregar_grafico_columnas(slide, titulo, df, col_categoria, col_valor, x, y, 
     chart.chart_title.text_frame.text = titulo
     chart.has_legend = False
 
-    chart.category_axis.tick_labels.font.size = Pt(8)
-    chart.value_axis.tick_labels.font.size = Pt(9)
-
-    chart.plots[0].has_data_labels = True
-    chart.plots[0].data_labels.show_value = True
-    chart.plots[0].data_labels.font.size = Pt(8)
+    aplicar_estilo_chart(chart, mostrar_valores=False)
 
 
 def agregar_grafico_columnas_agrupado(slide, titulo, df, col_categoria, col_serie, col_valor, x, y, w, h):
     if df.empty:
-        aviso = slide.shapes.add_textbox(
-            x,
-            y,
-            w,
-            Inches(0.6)
-        )
+        aviso = slide.shapes.add_textbox(x, y, w, Inches(0.6))
         aviso.text_frame.text = f"No hay datos para {titulo}."
         aviso.text_frame.paragraphs[0].font.size = Pt(14)
         return
@@ -254,15 +365,23 @@ def agregar_grafico_columnas_agrupado(slide, titulo, df, col_categoria, col_seri
     df[col_categoria] = df[col_categoria].astype(str).apply(limpiar_texto_ppt)
     df[col_serie] = df[col_serie].astype(str)
 
+    orden_categorias = (
+        df.groupby(col_categoria)[col_valor]
+        .sum()
+        .sort_values(ascending=False)
+        .index
+        .tolist()
+    )
+
     tabla = (
-        df
-        .pivot_table(
+        df.pivot_table(
             index=col_categoria,
             columns=col_serie,
             values=col_valor,
             aggfunc="sum",
             fill_value=0
         )
+        .reindex(orden_categorias)
     )
 
     categorias = tabla.index.astype(str).tolist()
@@ -287,14 +406,13 @@ def agregar_grafico_columnas_agrupado(slide, titulo, df, col_categoria, col_seri
     chart.has_title = True
     chart.chart_title.text_frame.text = titulo
     chart.has_legend = True
-    chart.legend.include_in_layout = False
 
-    chart.category_axis.tick_labels.font.size = Pt(8)
-    chart.value_axis.tick_labels.font.size = Pt(9)
+    try:
+        chart.legend.include_in_layout = False
+    except Exception:
+        pass
 
-    chart.plots[0].has_data_labels = True
-    chart.plots[0].data_labels.show_value = True
-    chart.plots[0].data_labels.font.size = Pt(7)
+    aplicar_estilo_chart(chart, mostrar_valores=False)
 
 
 def agregar_tabla_resumen(slide, df, x, y, w, h, max_filas=10):
@@ -319,14 +437,19 @@ def agregar_tabla_resumen(slide, df, x, y, w, h, max_filas=10):
     tabla = tabla_shape.table
 
     for j, col in enumerate(columnas):
-        tabla.cell(0, j).text = str(col)
-        tabla.cell(0, j).text_frame.paragraphs[0].font.bold = True
-        tabla.cell(0, j).text_frame.paragraphs[0].font.size = Pt(8)
+        celda = tabla.cell(0, j)
+        celda.text = str(col)
+        celda.fill.solid()
+        celda.fill.fore_color.rgb = PPT_AZUL_OSCURO
+        celda.text_frame.paragraphs[0].font.bold = True
+        celda.text_frame.paragraphs[0].font.size = Pt(8)
+        celda.text_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
 
     for i, (_, row) in enumerate(df_tabla.iterrows(), start=1):
         for j, col in enumerate(columnas):
-            tabla.cell(i, j).text = limpiar_texto_ppt(row[col])
-            tabla.cell(i, j).text_frame.paragraphs[0].font.size = Pt(7)
+            celda = tabla.cell(i, j)
+            celda.text = limpiar_texto_ppt(row[col])
+            celda.text_frame.paragraphs[0].font.size = Pt(7)
 
 
 def crear_ppt_editable_general(
@@ -349,28 +472,16 @@ def crear_ppt_editable_general(
     total_anios = df_pulling["Año"].nunique()
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    agregar_titulo_slide(slide, "Reporte editable de Pulling por batería y pozo")
-    agregar_subtitulo_slide(
+    agregar_banda_titulo(
         slide,
+        "Reporte de Pulling por batería y pozo",
         f"Periodo: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')} | Batería: {bateria_sel}"
     )
 
-    caja = slide.shapes.add_textbox(
-        Inches(0.6),
-        Inches(1.3),
-        Inches(12.0),
-        Inches(1.1)
-    )
-
-    tf = caja.text_frame
-    tf.text = (
-        f"Total eventos Pulling: {total_eventos}\n"
-        f"Pozos con Pulling: {total_pozos}\n"
-        f"Años con registros: {total_anios}"
-    )
-
-    for p in tf.paragraphs:
-        p.font.size = Pt(20)
+    agregar_tarjeta_kpi(slide, "Eventos Pulling", total_eventos, 0.7, 1.25, color=PPT_AZUL)
+    agregar_tarjeta_kpi(slide, "Pozos con Pulling", total_pozos, 3.65, 1.25, color=PPT_VERDE)
+    agregar_tarjeta_kpi(slide, "Años con registros", total_anios, 6.6, 1.25, color=PPT_NARANJA)
+    agregar_tarjeta_kpi(slide, "Top pozos graficados", top_n, 9.55, 1.25, color=PPT_MORADO)
 
     tabla_top = resumen_pozo[
         ["Pozo", "Veces_Pulling", "Baterias", "Causa_Principal", "CFalla_Principal"]
@@ -380,18 +491,24 @@ def crear_ppt_editable_general(
         slide,
         tabla_top,
         Inches(0.6),
-        Inches(3.0),
-        Inches(12.0),
-        Inches(3.6),
+        Inches(2.45),
+        Inches(12.1),
+        Inches(4.2),
         max_filas=10
     )
 
+    agregar_footer(slide)
+
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    agregar_titulo_slide(slide, f"Top {top_n} pozos con más eventos de Pulling")
-    agregar_subtitulo_slide(slide, "Gráfico editable en PowerPoint")
+    agregar_banda_titulo(
+        slide,
+        f"Top {top_n} pozos con más eventos de Pulling",
+        "Ordenado de mayor a menor intervención"
+    )
 
     top_pozos_ppt = (
         resumen_pozo[["Pozo", "Veces_Pulling"]]
+        .sort_values("Veces_Pulling", ascending=False)
         .head(top_n)
         .copy()
     )
@@ -402,15 +519,21 @@ def crear_ppt_editable_general(
         top_pozos_ppt,
         "Pozo",
         "Veces_Pulling",
-        Inches(0.7),
-        Inches(1.1),
-        Inches(11.9),
-        Inches(5.8)
+        Inches(0.65),
+        Inches(1.15),
+        Inches(12.0),
+        Inches(5.75),
+        ordenar=True
     )
 
+    agregar_footer(slide)
+
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    agregar_titulo_slide(slide, "Cantidad total de eventos de Pulling por año")
-    agregar_subtitulo_slide(slide, "Gráfico editable en PowerPoint")
+    agregar_banda_titulo(
+        slide,
+        "Eventos de Pulling por año",
+        "Total anual de intervenciones"
+    )
 
     resumen_anual_ppt = resumen_anual[["Año", "Eventos_Pulling"]].copy()
     resumen_anual_ppt["Año"] = resumen_anual_ppt["Año"].astype(str)
@@ -421,17 +544,28 @@ def crear_ppt_editable_general(
         resumen_anual_ppt,
         "Año",
         "Eventos_Pulling",
-        Inches(0.7),
-        Inches(1.1),
-        Inches(11.9),
-        Inches(5.8)
+        Inches(0.65),
+        Inches(1.15),
+        Inches(12.0),
+        Inches(5.75),
+        ordenar=False
     )
 
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    agregar_titulo_slide(slide, "Pulling por pozo y año")
-    agregar_subtitulo_slide(slide, "Gráfico editable agrupado por año")
+    agregar_footer(slide)
 
-    pozos_top = resumen_pozo.head(top_n)["Pozo"].tolist()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_banda_titulo(
+        slide,
+        "Pulling por pozo y año",
+        "Pozos ordenados de mayor a menor cantidad total de intervenciones"
+    )
+
+    pozos_top = (
+        resumen_pozo
+        .sort_values("Veces_Pulling", ascending=False)
+        .head(top_n)["Pozo"]
+        .tolist()
+    )
 
     resumen_pozo_anio_ppt = resumen_pozo_anio[
         resumen_pozo_anio["Pozo"].isin(pozos_top)
@@ -446,15 +580,20 @@ def crear_ppt_editable_general(
         "Pozo",
         "Año",
         "Veces_Pulling",
-        Inches(0.7),
-        Inches(1.1),
-        Inches(11.9),
-        Inches(5.8)
+        Inches(0.65),
+        Inches(1.15),
+        Inches(12.0),
+        Inches(5.75)
     )
 
+    agregar_footer(slide)
+
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    agregar_titulo_slide(slide, "Pozos reincidentes en el mismo año")
-    agregar_subtitulo_slide(slide, "Pozos con más de un Pulling en el mismo año")
+    agregar_banda_titulo(
+        slide,
+        "Pozos reincidentes en el mismo año",
+        "Pozos con más de un Pulling dentro del mismo año"
+    )
 
     if resumen_reincidentes.empty:
         aviso = slide.shapes.add_textbox(
@@ -474,11 +613,13 @@ def crear_ppt_editable_general(
             slide,
             tabla_reincidentes,
             Inches(0.4),
-            Inches(1.1),
+            Inches(1.15),
             Inches(12.5),
-            Inches(5.9),
+            Inches(5.75),
             max_filas=15
         )
+
+    agregar_footer(slide)
 
     salida = io.BytesIO()
     prs.save(salida)
@@ -494,27 +635,21 @@ def crear_ppt_editable_pozo(pozo, detalle_pozo, resumen_cfalla):
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
 
-    titulo = slide.shapes.add_textbox(
-        Inches(0.6),
-        Inches(0.25),
-        Inches(12.2),
-        Inches(0.6)
+    agregar_banda_titulo(
+        slide,
+        f"Análisis de Pulling del pozo {pozo}",
+        "Gráficos editables en PowerPoint"
     )
 
-    tf = titulo.text_frame
-    tf.text = f"Pozos Definidos a Pulling - {pozo}"
-    tf.paragraphs[0].font.size = Pt(28)
-    tf.paragraphs[0].font.bold = True
+    total_eventos = len(detalle_pozo)
+    anios = detalle_pozo["Año"].nunique()
+    primera_fecha = detalle_pozo["Fecha_Inicio_Texto"].iloc[0] if not detalle_pozo.empty else ""
+    ultima_fecha = detalle_pozo["Fecha_Inicio_Texto"].iloc[-1] if not detalle_pozo.empty else ""
 
-    texto_info = slide.shapes.add_textbox(
-        Inches(0.6),
-        Inches(0.85),
-        Inches(12),
-        Inches(0.3)
-    )
-
-    texto_info.text_frame.text = "Gráficos editables en PowerPoint"
-    texto_info.text_frame.paragraphs[0].font.size = Pt(11)
+    agregar_tarjeta_kpi(slide, "Eventos Pulling", total_eventos, 0.7, 1.05, color=PPT_AZUL)
+    agregar_tarjeta_kpi(slide, "Años con eventos", anios, 3.65, 1.05, color=PPT_VERDE)
+    agregar_tarjeta_kpi(slide, "Primera intervención", primera_fecha, 6.6, 1.05, color=PPT_NARANJA)
+    agregar_tarjeta_kpi(slide, "Última intervención", ultima_fecha, 9.55, 1.05, color=PPT_MORADO)
 
     resumen_anio_pozo = (
         detalle_pozo
@@ -523,65 +658,60 @@ def crear_ppt_editable_pozo(pozo, detalle_pozo, resumen_cfalla):
         .sort_values("Año")
     )
 
-    chart_data_anio = CategoryChartData()
-    chart_data_anio.categories = resumen_anio_pozo["Año"].astype(str).tolist()
-    chart_data_anio.add_series(
-        "Veces Pulling",
-        [int(x) for x in resumen_anio_pozo["Veces_Pulling"].tolist()]
+    agregar_grafico_columnas(
+        slide,
+        f"Pulling por año - {pozo}",
+        resumen_anio_pozo,
+        "Año",
+        "Veces_Pulling",
+        Inches(0.75),
+        Inches(2.25),
+        Inches(11.8),
+        Inches(4.65),
+        ordenar=False
     )
 
-    chart_1 = slide.shapes.add_chart(
-        XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Inches(0.7),
-        Inches(1.25),
-        Inches(11.8),
-        Inches(2.45),
-        chart_data_anio
-    ).chart
+    agregar_footer(slide)
 
-    chart_1.has_title = True
-    chart_1.chart_title.text_frame.text = f"Pulling por año - {pozo}"
-    chart_1.has_legend = False
-    chart_1.category_axis.tick_labels.font.size = Pt(9)
-    chart_1.value_axis.tick_labels.font.size = Pt(9)
-    chart_1.plots[0].has_data_labels = True
-    chart_1.plots[0].data_labels.show_value = True
-    chart_1.plots[0].data_labels.font.size = Pt(9)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    agregar_banda_titulo(
+        slide,
+        f"Motivo de falla del pozo {pozo}",
+        "Clasificación según CFalla"
+    )
 
     if resumen_cfalla is not None and not resumen_cfalla.empty:
-        chart_data_cfalla = CategoryChartData()
-        chart_data_cfalla.categories = resumen_cfalla["CFalla"].astype(str).tolist()
-        chart_data_cfalla.add_series(
-            "Cantidad de eventos",
-            [int(x) for x in resumen_cfalla["Veces"].tolist()]
+        resumen_cfalla_ppt = (
+            resumen_cfalla
+            .sort_values("Veces", ascending=False)
+            .head(15)
+            .copy()
         )
 
-        chart_2 = slide.shapes.add_chart(
-            XL_CHART_TYPE.COLUMN_CLUSTERED,
-            Inches(0.7),
-            Inches(4.25),
+        agregar_grafico_columnas(
+            slide,
+            f"Motivo de falla según CFalla - {pozo}",
+            resumen_cfalla_ppt,
+            "CFalla",
+            "Veces",
+            Inches(0.75),
+            Inches(1.25),
             Inches(11.8),
-            Inches(2.35),
-            chart_data_cfalla
-        ).chart
-
-        chart_2.has_title = True
-        chart_2.chart_title.text_frame.text = f"Motivo de falla - {pozo}"
-        chart_2.has_legend = False
-        chart_2.category_axis.tick_labels.font.size = Pt(8)
-        chart_2.value_axis.tick_labels.font.size = Pt(9)
-        chart_2.plots[0].has_data_labels = True
-        chart_2.plots[0].data_labels.show_value = True
-        chart_2.plots[0].data_labels.font.size = Pt(9)
+            Inches(5.65),
+            ordenar=True
+        )
     else:
         aviso = slide.shapes.add_textbox(
             Inches(0.7),
-            Inches(4.4),
+            Inches(1.6),
             Inches(11.8),
             Inches(0.6)
         )
         aviso.text_frame.text = "No hay datos en CFalla para este pozo."
         aviso.text_frame.paragraphs[0].font.size = Pt(16)
+
+    agregar_footer(slide)
 
     salida = io.BytesIO()
     prs.save(salida)
@@ -916,15 +1046,43 @@ st.dataframe(
     use_container_width=True
 )
 
+ranking_plot = resumen_pozo.head(top_n).copy()
+
 fig_ranking = px.bar(
-    resumen_pozo.head(top_n),
+    ranking_plot,
     x="Pozo",
     y="Veces_Pulling",
-    text="Veces_Pulling",
-    title=f"Top {top_n} pozos con más eventos de Pulling"
+    title=f"Top {top_n} pozos con más eventos de Pulling",
+    color_discrete_sequence=px.colors.qualitative.Safe
 )
 
-fig_ranking.update_traces(textposition="inside")
+fig_ranking.update_layout(
+    template="plotly_white",
+    xaxis_title="Pozo",
+    yaxis_title="Veces Pulling",
+    height=520,
+    bargap=0.22,
+    font=dict(size=12),
+    title=dict(font=dict(size=20), x=0.02)
+)
+
+fig_ranking.update_xaxes(
+    tickangle=-45,
+    showgrid=False
+)
+
+fig_ranking.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(148, 163, 184, 0.25)",
+    rangemode="tozero",
+    dtick=1
+)
+
+fig_ranking.update_traces(
+    marker_line_width=0.8,
+    marker_line_color="white",
+    opacity=0.95
+)
 
 st.plotly_chart(
     fig_ranking,
@@ -998,11 +1156,32 @@ fig_anual = px.bar(
     resumen_anual,
     x="Año",
     y="Eventos_Pulling",
-    text="Eventos_Pulling",
-    title="Cantidad total de eventos de Pulling por año"
+    title="Cantidad total de eventos de Pulling por año",
+    color_discrete_sequence=px.colors.qualitative.Safe
 )
 
-fig_anual.update_traces(textposition="inside")
+fig_anual.update_layout(
+    template="plotly_white",
+    xaxis_title="Año",
+    yaxis_title="Eventos Pulling",
+    height=500,
+    bargap=0.30,
+    font=dict(size=12),
+    title=dict(font=dict(size=20), x=0.02)
+)
+
+fig_anual.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(148, 163, 184, 0.25)",
+    rangemode="tozero",
+    dtick=1
+)
+
+fig_anual.update_traces(
+    marker_line_width=0.8,
+    marker_line_color="white",
+    opacity=0.95
+)
 
 st.plotly_chart(
     fig_anual,
@@ -1080,14 +1259,18 @@ with col_grafico:
     if not pozos_sel_grafico:
         st.warning("Selecciona por lo menos un pozo para mostrar el gráfico.")
     else:
-        pozos_ordenados_grafico = [
-            pozo for pozo in pozos_todos_ordenados
-            if pozo in pozos_sel_grafico
-        ]
-
         grafico_pozo_anio = resumen_pozo_anio[
-            resumen_pozo_anio["Pozo"].isin(pozos_ordenados_grafico)
+            resumen_pozo_anio["Pozo"].isin(pozos_sel_grafico)
         ].copy()
+
+        orden_pozos_grafico = (
+            grafico_pozo_anio
+            .groupby("Pozo")["Veces_Pulling"]
+            .sum()
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
 
         grafico_pozo_anio["Año"] = grafico_pozo_anio["Año"].astype(str)
 
@@ -1100,24 +1283,48 @@ with col_grafico:
             x="Pozo",
             y="Veces_Pulling",
             color="Año",
-            text="Veces_Pulling",
             barmode="group",
             title="Pulling por pozo y año ordenado de mayor a menor",
             category_orders={
-                "Pozo": pozos_ordenados_grafico,
+                "Pozo": orden_pozos_grafico,
                 "Año": anios_ordenados
-            }
+            },
+            color_discrete_sequence=px.colors.qualitative.Safe
         )
 
         fig_pozo_anio.update_layout(
+            template="plotly_white",
             xaxis_title="Pozo",
             yaxis_title="Veces Pulling",
-            legend_title="Año"
+            legend_title="Año",
+            height=560,
+            bargap=0.18,
+            bargroupgap=0.05,
+            font=dict(size=12),
+            title=dict(
+                font=dict(size=20),
+                x=0.02
+            )
         )
 
         fig_pozo_anio.update_xaxes(
             categoryorder="array",
-            categoryarray=pozos_ordenados_grafico
+            categoryarray=orden_pozos_grafico,
+            tickangle=-45,
+            showgrid=False
+        )
+
+        fig_pozo_anio.update_yaxes(
+            showgrid=True,
+            gridcolor="rgba(148, 163, 184, 0.25)",
+            rangemode="tozero",
+            dtick=1
+        )
+
+        fig_pozo_anio.update_traces(
+            marker_line_width=0.8,
+            marker_line_color="white",
+            opacity=0.95
         )
 
         st.plotly_chart(
@@ -1217,18 +1424,31 @@ else:
         resumen_anio_pozo_sel,
         x="Año",
         y="Veces_Pulling",
-        text="Veces_Pulling",
-        title=f"Pulling por año - {pozo_sel}"
+        title=f"Pulling por año - {pozo_sel}",
+        color_discrete_sequence=px.colors.qualitative.Safe
     )
 
     fig_pulling_anio_pozo_sel.update_layout(
+        template="plotly_white",
         xaxis_title="Año",
         yaxis_title="Veces Pulling",
-        height=420
+        height=420,
+        bargap=0.30,
+        font=dict(size=12),
+        title=dict(font=dict(size=20), x=0.02)
+    )
+
+    fig_pulling_anio_pozo_sel.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(148, 163, 184, 0.25)",
+        rangemode="tozero",
+        dtick=1
     )
 
     fig_pulling_anio_pozo_sel.update_traces(
-        textposition="outside"
+        marker_line_width=0.8,
+        marker_line_color="white",
+        opacity=0.95
     )
 
     st.plotly_chart(
@@ -1279,24 +1499,40 @@ else:
         resumen_cfalla,
         x="CFalla",
         y="Veces",
-        text="Veces",
         title=f"Motivo de falla según CFalla para el pozo {pozo_sel}",
         category_orders={
             "CFalla": orden_cfalla
-        }
+        },
+        color_discrete_sequence=px.colors.qualitative.Safe
     )
 
     fig_cfalla.update_layout(
+        template="plotly_white",
         xaxis_title="Motivo de falla",
-        yaxis_title="Cantidad de eventos"
+        yaxis_title="Cantidad de eventos",
+        height=500,
+        bargap=0.22,
+        font=dict(size=12),
+        title=dict(font=dict(size=20), x=0.02)
     )
 
     fig_cfalla.update_xaxes(
-        categoryorder="array",
-        categoryarray=orden_cfalla
+        tickangle=-35,
+        showgrid=False
     )
 
-    fig_cfalla.update_traces(textposition="inside")
+    fig_cfalla.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(148, 163, 184, 0.25)",
+        rangemode="tozero",
+        dtick=1
+    )
+
+    fig_cfalla.update_traces(
+        marker_line_width=0.8,
+        marker_line_color="white",
+        opacity=0.95
+    )
 
     st.plotly_chart(
         fig_cfalla,
