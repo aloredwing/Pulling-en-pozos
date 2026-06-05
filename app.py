@@ -30,16 +30,20 @@ archivo = st.file_uploader(
 def normalizar_texto(valor):
     if pd.isna(valor):
         return ""
+
     texto = str(valor).strip()
     texto = re.sub(r"\s+", " ", texto)
+
     return texto
 
 
 def normalizar_pozo(valor):
     if pd.isna(valor):
         return ""
+
     texto = str(valor).strip().upper()
     texto = re.sub(r"\s+", "", texto)
+
     return texto
 
 
@@ -141,6 +145,7 @@ def unir_unicos(serie):
     valores = serie.dropna().astype(str).str.strip()
     valores = valores[valores != ""]
     valores = list(dict.fromkeys(valores))
+
     return " | ".join(valores)
 
 
@@ -159,18 +164,8 @@ def limpiar_texto_ppt(valor):
     texto = texto.replace("\n", " ")
     texto = texto.replace("\r", " ")
     texto = re.sub(r"\s+", " ", texto)
+
     return texto.strip()
-
-
-def limitar_categorias(df, columna_categoria, columna_valor, max_categorias=20):
-    if df.empty:
-        return df
-
-    df = df.copy()
-    df = df.sort_values(columna_valor, ascending=False).head(max_categorias)
-    df[columna_categoria] = df[columna_categoria].astype(str).apply(limpiar_texto_ppt)
-
-    return df
 
 
 def agregar_titulo_slide(slide, titulo):
@@ -212,6 +207,9 @@ def agregar_grafico_columnas(slide, titulo, df, col_categoria, col_valor, x, y, 
         aviso.text_frame.paragraphs[0].font.size = Pt(14)
         return
 
+    df = df.copy()
+    df[col_categoria] = df[col_categoria].astype(str).apply(limpiar_texto_ppt)
+
     chart_data = CategoryChartData()
     chart_data.categories = df[col_categoria].astype(str).tolist()
     chart_data.add_series(
@@ -251,6 +249,10 @@ def agregar_grafico_columnas_agrupado(slide, titulo, df, col_categoria, col_seri
         aviso.text_frame.text = f"No hay datos para {titulo}."
         aviso.text_frame.paragraphs[0].font.size = Pt(14)
         return
+
+    df = df.copy()
+    df[col_categoria] = df[col_categoria].astype(str).apply(limpiar_texto_ppt)
+    df[col_serie] = df[col_serie].astype(str)
 
     tabla = (
         df
@@ -355,7 +357,7 @@ def crear_ppt_editable_general(
 
     caja = slide.shapes.add_textbox(
         Inches(0.6),
-        Inches(1.4),
+        Inches(1.3),
         Inches(12.0),
         Inches(1.1)
     )
@@ -370,7 +372,9 @@ def crear_ppt_editable_general(
     for p in tf.paragraphs:
         p.font.size = Pt(20)
 
-    tabla_top = resumen_pozo[["Pozo", "Veces_Pulling", "Baterias", "Causa_Principal", "CFalla_Principal"]].head(10)
+    tabla_top = resumen_pozo[
+        ["Pozo", "Veces_Pulling", "Baterias", "Causa_Principal", "CFalla_Principal"]
+    ].head(10)
 
     agregar_tabla_resumen(
         slide,
@@ -529,9 +533,9 @@ def crear_ppt_editable_pozo(pozo, detalle_pozo, resumen_cfalla):
     chart_1 = slide.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_CLUSTERED,
         Inches(0.7),
-        Inches(1.35),
+        Inches(1.25),
         Inches(11.8),
-        Inches(2.35),
+        Inches(2.45),
         chart_data_anio
     ).chart
 
@@ -1197,6 +1201,41 @@ st.metric(
     len(detalle_pozo)
 )
 
+st.subheader(f"Pulling por año - {pozo_sel}")
+
+resumen_anio_pozo_sel = (
+    df_pulling[df_pulling["Pozo"] == pozo_sel]
+    .groupby("Año", as_index=False)
+    .agg(Veces_Pulling=("Pozo", "count"))
+    .sort_values("Año")
+)
+
+if resumen_anio_pozo_sel.empty:
+    st.warning(f"No hay datos anuales para el pozo {pozo_sel}.")
+else:
+    fig_pulling_anio_pozo_sel = px.bar(
+        resumen_anio_pozo_sel,
+        x="Año",
+        y="Veces_Pulling",
+        text="Veces_Pulling",
+        title=f"Pulling por año - {pozo_sel}"
+    )
+
+    fig_pulling_anio_pozo_sel.update_layout(
+        xaxis_title="Año",
+        yaxis_title="Veces Pulling",
+        height=420
+    )
+
+    fig_pulling_anio_pozo_sel.update_traces(
+        textposition="outside"
+    )
+
+    st.plotly_chart(
+        fig_pulling_anio_pozo_sel,
+        use_container_width=True
+    )
+
 st.dataframe(
     detalle_pozo,
     use_container_width=True
@@ -1264,7 +1303,7 @@ else:
         use_container_width=True
     )
 
-st.subheader("PowerPoint editable del pozo seleccionado")
+st.subheader(f"Exportar PowerPoint editable - {pozo_sel}")
 
 ppt_editable = crear_ppt_editable_pozo(
     pozo_sel,
@@ -1275,9 +1314,9 @@ ppt_editable = crear_ppt_editable_pozo(
 nombre_pozo_limpio = str(pozo_sel).replace("/", "_").replace("\\", "_")
 
 st.download_button(
-    label="Descargar gráficos editables en PowerPoint",
+    label=f"Descargar PowerPoint editable de {pozo_sel}",
     data=ppt_editable,
-    file_name=f"graficos_editables_{nombre_pozo_limpio}.pptx",
+    file_name=f"pulling_por_anio_y_falla_{nombre_pozo_limpio}.pptx",
     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
 )
 
