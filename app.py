@@ -154,6 +154,335 @@ def valor_mas_frecuente(serie):
     return valores.value_counts().index[0]
 
 
+def limpiar_texto_ppt(valor):
+    texto = str(valor)
+    texto = texto.replace("\n", " ")
+    texto = texto.replace("\r", " ")
+    texto = re.sub(r"\s+", " ", texto)
+    return texto.strip()
+
+
+def limitar_categorias(df, columna_categoria, columna_valor, max_categorias=20):
+    if df.empty:
+        return df
+
+    df = df.copy()
+    df = df.sort_values(columna_valor, ascending=False).head(max_categorias)
+    df[columna_categoria] = df[columna_categoria].astype(str).apply(limpiar_texto_ppt)
+
+    return df
+
+
+def agregar_titulo_slide(slide, titulo):
+    caja_titulo = slide.shapes.add_textbox(
+        Inches(0.45),
+        Inches(0.18),
+        Inches(12.4),
+        Inches(0.45)
+    )
+
+    tf = caja_titulo.text_frame
+    tf.text = titulo
+    tf.paragraphs[0].font.size = Pt(22)
+    tf.paragraphs[0].font.bold = True
+
+
+def agregar_subtitulo_slide(slide, subtitulo):
+    caja_subtitulo = slide.shapes.add_textbox(
+        Inches(0.45),
+        Inches(0.62),
+        Inches(12.4),
+        Inches(0.35)
+    )
+
+    tf = caja_subtitulo.text_frame
+    tf.text = subtitulo
+    tf.paragraphs[0].font.size = Pt(11)
+
+
+def agregar_grafico_columnas(slide, titulo, df, col_categoria, col_valor, x, y, w, h):
+    if df.empty:
+        aviso = slide.shapes.add_textbox(
+            x,
+            y,
+            w,
+            Inches(0.6)
+        )
+        aviso.text_frame.text = f"No hay datos para {titulo}."
+        aviso.text_frame.paragraphs[0].font.size = Pt(14)
+        return
+
+    chart_data = CategoryChartData()
+    chart_data.categories = df[col_categoria].astype(str).tolist()
+    chart_data.add_series(
+        col_valor,
+        [int(v) for v in df[col_valor].fillna(0).tolist()]
+    )
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        x,
+        y,
+        w,
+        h,
+        chart_data
+    ).chart
+
+    chart.has_title = True
+    chart.chart_title.text_frame.text = titulo
+    chart.has_legend = False
+
+    chart.category_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.tick_labels.font.size = Pt(9)
+
+    chart.plots[0].has_data_labels = True
+    chart.plots[0].data_labels.show_value = True
+    chart.plots[0].data_labels.font.size = Pt(8)
+
+
+def agregar_grafico_columnas_agrupado(slide, titulo, df, col_categoria, col_serie, col_valor, x, y, w, h):
+    if df.empty:
+        aviso = slide.shapes.add_textbox(
+            x,
+            y,
+            w,
+            Inches(0.6)
+        )
+        aviso.text_frame.text = f"No hay datos para {titulo}."
+        aviso.text_frame.paragraphs[0].font.size = Pt(14)
+        return
+
+    tabla = (
+        df
+        .pivot_table(
+            index=col_categoria,
+            columns=col_serie,
+            values=col_valor,
+            aggfunc="sum",
+            fill_value=0
+        )
+    )
+
+    categorias = tabla.index.astype(str).tolist()
+    series = tabla.columns.astype(str).tolist()
+
+    chart_data = CategoryChartData()
+    chart_data.categories = categorias
+
+    for serie in series:
+        valores = [int(v) for v in tabla[serie].tolist()]
+        chart_data.add_series(str(serie), valores)
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        x,
+        y,
+        w,
+        h,
+        chart_data
+    ).chart
+
+    chart.has_title = True
+    chart.chart_title.text_frame.text = titulo
+    chart.has_legend = True
+    chart.legend.include_in_layout = False
+
+    chart.category_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.tick_labels.font.size = Pt(9)
+
+    chart.plots[0].has_data_labels = True
+    chart.plots[0].data_labels.show_value = True
+    chart.plots[0].data_labels.font.size = Pt(7)
+
+
+def agregar_tabla_resumen(slide, df, x, y, w, h, max_filas=10):
+    if df.empty:
+        return
+
+    df_tabla = df.head(max_filas).copy()
+
+    columnas = list(df_tabla.columns)
+    filas = len(df_tabla) + 1
+    cols = len(columnas)
+
+    tabla_shape = slide.shapes.add_table(
+        filas,
+        cols,
+        x,
+        y,
+        w,
+        h
+    )
+
+    tabla = tabla_shape.table
+
+    for j, col in enumerate(columnas):
+        tabla.cell(0, j).text = str(col)
+        tabla.cell(0, j).text_frame.paragraphs[0].font.bold = True
+        tabla.cell(0, j).text_frame.paragraphs[0].font.size = Pt(8)
+
+    for i, (_, row) in enumerate(df_tabla.iterrows(), start=1):
+        for j, col in enumerate(columnas):
+            tabla.cell(i, j).text = limpiar_texto_ppt(row[col])
+            tabla.cell(i, j).text_frame.paragraphs[0].font.size = Pt(7)
+
+
+def crear_ppt_editable_general(
+    df_pulling,
+    resumen_pozo,
+    resumen_pozo_anio,
+    resumen_anual,
+    resumen_reincidentes,
+    top_n,
+    fecha_inicio,
+    fecha_fin,
+    bateria_sel
+):
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    total_eventos = len(df_pulling)
+    total_pozos = df_pulling["Pozo"].nunique()
+    total_anios = df_pulling["Año"].nunique()
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_titulo_slide(slide, "Reporte editable de Pulling por batería y pozo")
+    agregar_subtitulo_slide(
+        slide,
+        f"Periodo: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')} | Batería: {bateria_sel}"
+    )
+
+    caja = slide.shapes.add_textbox(
+        Inches(0.6),
+        Inches(1.4),
+        Inches(12.0),
+        Inches(1.1)
+    )
+
+    tf = caja.text_frame
+    tf.text = (
+        f"Total eventos Pulling: {total_eventos}\n"
+        f"Pozos con Pulling: {total_pozos}\n"
+        f"Años con registros: {total_anios}"
+    )
+
+    for p in tf.paragraphs:
+        p.font.size = Pt(20)
+
+    tabla_top = resumen_pozo[["Pozo", "Veces_Pulling", "Baterias", "Causa_Principal", "CFalla_Principal"]].head(10)
+
+    agregar_tabla_resumen(
+        slide,
+        tabla_top,
+        Inches(0.6),
+        Inches(3.0),
+        Inches(12.0),
+        Inches(3.6),
+        max_filas=10
+    )
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_titulo_slide(slide, f"Top {top_n} pozos con más eventos de Pulling")
+    agregar_subtitulo_slide(slide, "Gráfico editable en PowerPoint")
+
+    top_pozos_ppt = (
+        resumen_pozo[["Pozo", "Veces_Pulling"]]
+        .head(top_n)
+        .copy()
+    )
+
+    agregar_grafico_columnas(
+        slide,
+        f"Top {top_n} pozos con más eventos de Pulling",
+        top_pozos_ppt,
+        "Pozo",
+        "Veces_Pulling",
+        Inches(0.7),
+        Inches(1.1),
+        Inches(11.9),
+        Inches(5.8)
+    )
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_titulo_slide(slide, "Cantidad total de eventos de Pulling por año")
+    agregar_subtitulo_slide(slide, "Gráfico editable en PowerPoint")
+
+    resumen_anual_ppt = resumen_anual[["Año", "Eventos_Pulling"]].copy()
+    resumen_anual_ppt["Año"] = resumen_anual_ppt["Año"].astype(str)
+
+    agregar_grafico_columnas(
+        slide,
+        "Cantidad total de eventos de Pulling por año",
+        resumen_anual_ppt,
+        "Año",
+        "Eventos_Pulling",
+        Inches(0.7),
+        Inches(1.1),
+        Inches(11.9),
+        Inches(5.8)
+    )
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_titulo_slide(slide, "Pulling por pozo y año")
+    agregar_subtitulo_slide(slide, "Gráfico editable agrupado por año")
+
+    pozos_top = resumen_pozo.head(top_n)["Pozo"].tolist()
+
+    resumen_pozo_anio_ppt = resumen_pozo_anio[
+        resumen_pozo_anio["Pozo"].isin(pozos_top)
+    ].copy()
+
+    resumen_pozo_anio_ppt["Año"] = resumen_pozo_anio_ppt["Año"].astype(str)
+
+    agregar_grafico_columnas_agrupado(
+        slide,
+        "Pulling por pozo y año",
+        resumen_pozo_anio_ppt,
+        "Pozo",
+        "Año",
+        "Veces_Pulling",
+        Inches(0.7),
+        Inches(1.1),
+        Inches(11.9),
+        Inches(5.8)
+    )
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_titulo_slide(slide, "Pozos reincidentes en el mismo año")
+    agregar_subtitulo_slide(slide, "Pozos con más de un Pulling en el mismo año")
+
+    if resumen_reincidentes.empty:
+        aviso = slide.shapes.add_textbox(
+            Inches(0.8),
+            Inches(1.5),
+            Inches(11.5),
+            Inches(0.8)
+        )
+        aviso.text_frame.text = "No se detectaron pozos reincidentes en el mismo año para los filtros seleccionados."
+        aviso.text_frame.paragraphs[0].font.size = Pt(16)
+    else:
+        tabla_reincidentes = resumen_reincidentes[
+            ["Año", "Pozo", "Veces_Pulling", "Bateria", "Fechas", "CFalla_Principal"]
+        ].head(15)
+
+        agregar_tabla_resumen(
+            slide,
+            tabla_reincidentes,
+            Inches(0.4),
+            Inches(1.1),
+            Inches(12.5),
+            Inches(5.9),
+            max_filas=15
+        )
+
+    salida = io.BytesIO()
+    prs.save(salida)
+    salida.seek(0)
+
+    return salida.getvalue()
+
+
 def crear_ppt_editable_pozo(pozo, detalle_pozo, resumen_cfalla):
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -591,6 +920,8 @@ fig_ranking = px.bar(
     title=f"Top {top_n} pozos con más eventos de Pulling"
 )
 
+fig_ranking.update_traces(textposition="inside")
+
 st.plotly_chart(
     fig_ranking,
     use_container_width=True
@@ -666,6 +997,8 @@ fig_anual = px.bar(
     text="Eventos_Pulling",
     title="Cantidad total de eventos de Pulling por año"
 )
+
+fig_anual.update_traces(textposition="inside")
 
 st.plotly_chart(
     fig_anual,
@@ -788,6 +1121,27 @@ with col_grafico:
             use_container_width=True
         )
 
+st.subheader("PowerPoint editable del análisis general")
+
+ppt_general = crear_ppt_editable_general(
+    df_pulling=df_pulling,
+    resumen_pozo=resumen_pozo,
+    resumen_pozo_anio=resumen_pozo_anio,
+    resumen_anual=resumen_anual,
+    resumen_reincidentes=resumen_reincidentes,
+    top_n=top_n,
+    fecha_inicio=fecha_inicio,
+    fecha_fin=fecha_fin,
+    bateria_sel=bateria_sel
+)
+
+st.download_button(
+    label="Descargar PowerPoint editable del análisis general",
+    data=ppt_general,
+    file_name="reporte_editable_pulling_general.pptx",
+    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+)
+
 st.divider()
 
 st.subheader(f"Detalle del pozo con más Pulling: {pozo_top}")
@@ -903,6 +1257,8 @@ else:
         categoryarray=orden_cfalla
     )
 
+    fig_cfalla.update_traces(textposition="inside")
+
     st.plotly_chart(
         fig_cfalla,
         use_container_width=True
@@ -985,6 +1341,8 @@ df_exportar = df_pulling[columnas_detalle].copy()
 csv_detalle = df_exportar.to_csv(index=False).encode("utf-8-sig")
 csv_ranking = resumen_pozo.to_csv(index=False).encode("utf-8-sig")
 csv_reincidentes = resumen_reincidentes.to_csv(index=False).encode("utf-8-sig")
+csv_pozo_anio = resumen_pozo_anio.to_csv(index=False).encode("utf-8-sig")
+csv_anual = resumen_anual.to_csv(index=False).encode("utf-8-sig")
 
 col_descarga1, col_descarga2, col_descarga3 = st.columns(3)
 
@@ -1006,5 +1364,21 @@ col_descarga3.download_button(
     label="Descargar reincidentes por año",
     data=csv_reincidentes,
     file_name="pozos_reincidentes_mismo_anio.csv",
+    mime="text/csv"
+)
+
+col_descarga4, col_descarga5 = st.columns(2)
+
+col_descarga4.download_button(
+    label="Descargar pulling por pozo y año",
+    data=csv_pozo_anio,
+    file_name="pulling_por_pozo_y_anio.csv",
+    mime="text/csv"
+)
+
+col_descarga5.download_button(
+    label="Descargar eventos por año",
+    data=csv_anual,
+    file_name="eventos_pulling_por_anio.csv",
     mime="text/csv"
 )
